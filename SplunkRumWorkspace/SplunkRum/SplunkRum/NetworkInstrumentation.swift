@@ -35,6 +35,7 @@ func addLinkToSpan(span: Span, valStr: String) {
 
 func endHttpSpan(span: Span?, task: URLSessionTask) {
     if span == nil {
+        print("SPLUNK_DEBUG endHttpSpan span is nil")
         return
     }
     let hr: HTTPURLResponse? = task.response as? HTTPURLResponse
@@ -68,30 +69,36 @@ func endHttpSpan(span: Span?, task: URLSessionTask) {
         span?.setAttribute(key: "net.host.connection.type", value: hostConnectionType!)
     }
     span!.end()
+    print("SPLUNK_DEBUG endHttpSpan span ended")
 }
 
 func startHttpSpan(request: URLRequest?) -> Span? {
     if request == nil || request?.url == nil {
+        print("SPLUNK_DEBUG startHttpSpan request or url nil")
         return nil
     }
     let url = request!.url!
     if !(url.scheme?.lowercased().starts(with: "http") ?? false) {
+        print("SPLUNK_DEBUG startHttpSpan scheme not http "+(url.scheme ?? "(scheme is nil)"))
         return nil
     }
     let method = request!.httpMethod ?? "GET"
     // Don't loop reporting on communication with the beacon
     let absUrlString = url.absoluteString
     if SplunkRum.theBeaconUrl != nil && absUrlString.starts(with: SplunkRum.theBeaconUrl!) {
+        print("SPLUNK_DEBUG startHttpSpan beaconURL, ignoring")
         return nil
     }
     if SplunkRum.configuredOptions?.ignoreURLs != nil {
         let result = SplunkRum.configuredOptions?.ignoreURLs?.matches(in: absUrlString, range: NSRange(location: 0, length: absUrlString.utf16.count))
         if result?.count != 0 {
+            print("SPLUNK_DEBUG startHttpSpan URL ignored")
             return nil
         }
     }
     let tracer = buildTracer()
     let span = tracer.spanBuilder(spanName: "HTTP "+method).setSpanKind(spanKind: .client).startSpan()
+    print("SPLUNK_DEBUG startHttpSpan span started")
     span.setAttribute(key: "component", value: "http")
     span.setAttribute(key: "http.url", value: url.absoluteString)
     span.setAttribute(key: "http.method", value: method)
@@ -115,13 +122,20 @@ class SessionTaskObserver: NSObject {
         }
         let task = object as? URLSessionTask
         if task == nil {
+            print("SPLUNK_DEBUG observeValue nil")
             return
         }
+        print("SPLUNK_DEBUG observeValue \(task!.taskIdentifier.description)")
         if span == nil {
+            print("SPLUNK_DEBUG observeValue \(task!.taskIdentifier.description)  span was nil, starting span")
             span = startHttpSpan(request: task!.originalRequest)
+            if span == nil {
+                print("SPLUNK_DEBUG observeValue \(task!.taskIdentifier.description)  starting span returned nil")
+            }
         }
         // FIXME possibly also allow .canceling to close the span?
         if task!.state == .completed && extraRefToSelf != nil {
+            print("SPLUNK_DEBUG observeValue \(task!.taskIdentifier.description)  state is completed, ending span")
             endHttpSpan(span: span,
                         task: task!)
             task!.removeObserver(self, forKeyPath: "state")
@@ -131,6 +145,7 @@ class SessionTaskObserver: NSObject {
 }
 
 func wireUpTaskObserver(task: URLSessionTask) {
+    print("SPLUNK_DEBUG wireUpTaskObserver \(task.taskIdentifier.description)")
     task.addObserver(SessionTaskObserver(), forKeyPath: "state", options: .new, context: nil)
 }
 
