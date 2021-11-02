@@ -35,6 +35,7 @@ func addLinkToSpan(span: Span, valStr: String) {
 
 func endHttpSpan(span: Span?, task: URLSessionTask) {
     if span == nil {
+        print("SPLUNK_DEBUG endHttpSpan span is nil")
         return
     }
     let hr: HTTPURLResponse? = task.response as? HTTPURLResponse
@@ -68,30 +69,36 @@ func endHttpSpan(span: Span?, task: URLSessionTask) {
         span?.setAttribute(key: "net.host.connection.type", value: hostConnectionType!)
     }
     span!.end()
+    print("SPLUNK_DEBUG endHttpSpan span ended")
 }
 
 func startHttpSpan(request: URLRequest?) -> Span? {
     if request == nil || request?.url == nil {
+        print("SPLUNK_DEBUG startHttpSpan request or url nil")
         return nil
     }
     let url = request!.url!
     if !(url.scheme?.lowercased().starts(with: "http") ?? false) {
+        print("SPLUNK_DEBUG startHttpSpan scheme not http "+(url.scheme ?? "(scheme is nil)"))
         return nil
     }
     let method = request!.httpMethod ?? "GET"
     // Don't loop reporting on communication with the beacon
     let absUrlString = url.absoluteString
     if SplunkRum.theBeaconUrl != nil && absUrlString.starts(with: SplunkRum.theBeaconUrl!) {
+        print("SPLUNK_DEBUG startHttpSpan beaconURL, ignoring")
         return nil
     }
     if SplunkRum.configuredOptions?.ignoreURLs != nil {
         let result = SplunkRum.configuredOptions?.ignoreURLs?.matches(in: absUrlString, range: NSRange(location: 0, length: absUrlString.utf16.count))
         if result?.count != 0 {
+            print("SPLUNK_DEBUG startHttpSpan URL ignored")
             return nil
         }
     }
     let tracer = buildTracer()
     let span = tracer.spanBuilder(spanName: "HTTP "+method).setSpanKind(spanKind: .client).startSpan()
+    print("SPLUNK_DEBUG startHttpSpan span started")
     span.setAttribute(key: "component", value: "http")
     span.setAttribute(key: "http.url", value: url.absoluteString)
     span.setAttribute(key: "http.method", value: method)
@@ -115,13 +122,20 @@ class SessionTaskObserver: NSObject {
         }
         let task = object as? URLSessionTask
         if task == nil {
+            print("SPLUNK_DEBUG observeValue nil")
             return
         }
+        print("SPLUNK_DEBUG observeValue \(task!.taskIdentifier.description)")
         if span == nil {
+            print("SPLUNK_DEBUG observeValue \(task!.taskIdentifier.description)  span was nil, starting span")
             span = startHttpSpan(request: task!.originalRequest)
+            if span == nil {
+                print("SPLUNK_DEBUG observeValue \(task!.taskIdentifier.description)  starting span returned nil")
+            }
         }
         // FIXME possibly also allow .canceling to close the span?
         if task!.state == .completed && extraRefToSelf != nil {
+            print("SPLUNK_DEBUG observeValue \(task!.taskIdentifier.description)  state is completed, ending span")
             endHttpSpan(span: span,
                         task: task!)
             task!.removeObserver(self, forKeyPath: "state")
@@ -131,18 +145,21 @@ class SessionTaskObserver: NSObject {
 }
 
 func wireUpTaskObserver(task: URLSessionTask) {
+    print("SPLUNK_DEBUG wireUpTaskObserver \(task.taskIdentifier.description)")
     task.addObserver(SessionTaskObserver(), forKeyPath: "state", options: .new, context: nil)
 }
 
 // swiftlint:disable missing_docs
 extension URLSession {
     @objc open func splunk_swizzled_dataTask(with url: NSURL, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_dataTask(with: url, completionHandler: completionHandler)
         wireUpTaskObserver(task: answer)
         return answer
        }
 
     @objc open func splunk_swizzled_dataTask(with url: NSURL) -> URLSessionDataTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_dataTask(with: url)
         wireUpTaskObserver(task: answer)
         return answer
@@ -150,12 +167,14 @@ extension URLSession {
 
     // rename objc view of func to allow "overloading"
     @objc(splunkSwizzledDataTaskWithRequest: completionHandler:) open func splunk_swizzled_dataTask(with request: URLRequest, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_dataTask(with: request, completionHandler: completionHandler)
         wireUpTaskObserver(task: answer)
         return answer
        }
 
     @objc(splunkSwizzledDataTaskWithRequest:) open func splunk_swizzled_dataTask(with request: URLRequest) -> URLSessionDataTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_dataTask(with: request)
         wireUpTaskObserver(task: answer)
         return answer
@@ -163,49 +182,58 @@ extension URLSession {
 
     // uploads
     @objc open func splunk_swizzled_uploadTask(with: URLRequest, from: Data) -> URLSessionUploadTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_uploadTask(with: with, from: from)
         wireUpTaskObserver(task: answer)
         return answer
     }
     @objc open func splunk_swizzled_uploadTask(with: URLRequest, from: Data, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionUploadTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_uploadTask(with: with, from: from, completionHandler: completionHandler)
         wireUpTaskObserver(task: answer)
         return answer
     }
     @objc open func splunk_swizzled_uploadTask(with: URLRequest, fromFile: NSURL) -> URLSessionUploadTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_uploadTask(with: with, fromFile: fromFile)
         wireUpTaskObserver(task: answer)
         return answer
     }
     @objc open func splunk_swizzled_uploadTask(with: URLRequest, fromFile: NSURL, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionUploadTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_uploadTask(with: with, fromFile: fromFile, completionHandler: completionHandler)
         wireUpTaskObserver(task: answer)
         return answer
     }
     @objc open func splunk_swizzled_uploadTask(withStreamedRequest: URLRequest) -> URLSessionUploadTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_uploadTask(withStreamedRequest: withStreamedRequest)
         wireUpTaskObserver(task: answer)
         return answer
     }
     // download tasks
     @objc open func splunk_swizzled_downloadTask(with url: NSURL) -> URLSessionDownloadTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_downloadTask(with: url)
         wireUpTaskObserver(task: answer)
         return answer
     }
     @objc open func splunk_swizzled_downloadTask(with url: NSURL, completionHandler: @escaping (URL?, URLResponse?, Error?) -> Void) -> URLSessionDownloadTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_downloadTask(with: url, completionHandler: completionHandler)
         wireUpTaskObserver(task: answer)
         return answer
        }
 
     @objc(splunkSwizzledDownloadTaskWithRequest: completionHandler:) open func splunk_swizzled_downloadTask(with request: URLRequest, completionHandler: @escaping (URL?, URLResponse?, Error?) -> Void) -> URLSessionDownloadTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_downloadTask(with: request, completionHandler: completionHandler)
         wireUpTaskObserver(task: answer)
         return answer
        }
 
     @objc(splunkSwizzledDownloadTaskWithRequest:) open func splunk_swizzled_downloadTask(with request: URLRequest) -> URLSessionDataTask {
+        print("SPLUNK_DEBUG inst method start")
         let answer = splunk_swizzled_downloadTask(with: request)
         wireUpTaskObserver(task: answer)
         return answer
@@ -219,11 +247,13 @@ func swizzle(clazz: AnyClass, orig: Selector, swizzled: Selector) {
     if origM != nil && swizM != nil {
         method_exchangeImplementations(origM!, swizM!)
     } else {
+        print("SPLUNK_DEBUG problem swizzling "+NSStringFromSelector(orig))
         debug_log("warning: could not swizzle "+NSStringFromSelector(orig))
     }
 }
 
 func initalizeNetworkInstrumentation() {
+    print("SPLUNK_DEBUG initializeNetworkInstrumentation()")
     let urlsession = URLSession.self
 
     // This syntax is obnoxious to differentiate with:request from with:url
@@ -275,5 +305,6 @@ func initalizeNetworkInstrumentation() {
             orig: #selector(URLSession.downloadTask(with:) as (URLSession) -> (URLRequest) -> URLSessionDownloadTask),
             swizzled: NSSelectorFromString("splunkSwizzledDownloadTaskWithRequest:"))
     // FIXME figure out how to support the two ResumeData variants - state transfer is weird
+    print("SPLUNK_DEBUG initializeNetworkInstrumentation() done")
 
 }
