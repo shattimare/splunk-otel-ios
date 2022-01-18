@@ -131,7 +131,7 @@ class SessionTaskObserver: NSObject {
 }
 
 func wireUpTaskObserver(task: URLSessionTask) {
-    task.addObserver(SessionTaskObserver(), forKeyPath: "state", options: .new, context: nil)
+    //task.addObserver(SessionTaskObserver(), forKeyPath: "state", options: .new, context: nil)
 }
 
 // swiftlint:disable missing_docs
