@@ -191,7 +191,8 @@ var splunkRumInitializeCalledTime = Date()
         if options != nil {
             srInit.setAttribute(key: "config_settings", value: options!.toAttributeValue())
         }
-        initalizeNetworkInstrumentation()
+        // initalizeNetworkInstrumentation()
+        print("skipping network instrumentation on this branch")
         initializeNetworkTypeMonitoring()
         initalizeUIInstrumentation()
         // not initializeAppLifecycleInstrumentation, done at end of AppStart
